@@ -1,0 +1,1567 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{color-scheme:light}body{margin:0}[hidden]{display:none!important}</style>
+<title>Up&amp;Down</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@500&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+/* Layout: one centered column per screen (menu, lobby, game). The game screen is a status line, the 10x10 plate with coordinate axes, an action row and a key hint. */
+:root {
+  --bg: #e8ecf0;
+  --fg: #1b2430;
+  --muted: #5a6877;
+  --line: #c3ccd6;
+  --panel: #f4f6f8;
+  --plate: #cdd5de;
+  --pit: #27313d;
+  --tile: #f7f9fb;
+  --tile-hi: #ffffff;
+  --tile-edge: #a9b5c2;
+  --start-tile: #dbe5f6;
+  --start-edge: #94a8cc;
+  --goal-tile: #c9efe8;
+  --goal-edge: #69bdb0;
+  --goal: #138a78;
+  --player: #f2a516;
+  --player-edge: #b4710a;
+  --can: #2f6fdb;
+  --enemy: #d63a4d;
+  --enemy-edge: #8c1f2d;
+  --enemy-text: #b3202f;
+  --btn-bg: #1b2430;
+  --btn-fg: #f4f6f8;
+  --font-body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+  --gap: 5px;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10151b;
+    --fg: #e5eaf0;
+    --muted: #8f9cab;
+    --line: #2a3441;
+    --panel: #18202a;
+    --plate: #1c252f;
+    --pit: #05080b;
+    --tile: #3c4958;
+    --tile-hi: #4e5d6f;
+    --tile-edge: #202a35;
+    --start-tile: #3d4f74;
+    --start-edge: #212c45;
+    --goal-tile: #1f6c61;
+    --goal-edge: #10413b;
+    --goal: #4cd3bd;
+    --player: #ffb828;
+    --player-edge: #a86b00;
+    --can: #7aa8ff;
+    --enemy: #ff5d73;
+    --enemy-edge: #8a2030;
+    --enemy-text: #ff8494;
+    --btn-bg: #e5eaf0;
+    --btn-fg: #10151b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #10151b;
+  --fg: #e5eaf0;
+  --muted: #8f9cab;
+  --line: #2a3441;
+  --panel: #18202a;
+  --plate: #1c252f;
+  --pit: #05080b;
+  --tile: #3c4958;
+  --tile-hi: #4e5d6f;
+  --tile-edge: #202a35;
+  --start-tile: #3d4f74;
+  --start-edge: #212c45;
+  --goal-tile: #1f6c61;
+  --goal-edge: #10413b;
+  --goal: #4cd3bd;
+  --player: #ffb828;
+  --player-edge: #a86b00;
+  --can: #7aa8ff;
+  --enemy: #ff5d73;
+  --enemy-edge: #8a2030;
+  --enemy-text: #ff8494;
+  --btn-bg: #e5eaf0;
+  --btn-fg: #10151b;
+  color-scheme: dark;
+}
+
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  padding-block: 20px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.game {
+  width: min(100%, 560px, max(300px, calc(100svh - 340px)));
+  margin-inline: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+h1 { margin: 0; font-size: 1.6rem; line-height: 1.2; font-weight: 700; letter-spacing: .04em; text-wrap: balance; }
+.mono { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+button, .cell, input { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+/* menu and lobby */
+.menu, .lobby { width: min(100%, 420px); margin-inline: auto; display: flex; flex-direction: column; gap: 16px; }
+.menu { padding-top: min(9svh, 72px); gap: 28px; }
+.logo { margin: 0; font-size: 2.8rem; line-height: 1; font-weight: 700; letter-spacing: .01em; }
+.logo span { display: inline-block; }
+.logo .up { transform: translateY(-.1em); }
+.logo .amp { font-weight: 400; color: var(--muted); padding-inline: .08em; }
+.logo .dn { transform: translateY(.16em); color: var(--muted); }
+.menu-list { display: flex; flex-direction: column; gap: 10px; }
+.menu-btn { min-height: 64px; padding: 0 18px; font-size: 1.05rem; text-align: left; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.menu-btn small { font-family: var(--font-mono); font-size: .72rem; font-weight: 500; color: var(--muted); }
+.menu-btn:hover:not(:disabled) { border-color: var(--can); }
+.panel { display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+.or { color: var(--muted); font-size: .85rem; text-align: center; }
+.join { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
+input {
+  font: inherit; font-family: var(--font-mono); font-size: 1.05rem; letter-spacing: .12em; min-height: 46px; min-width: 0; padding: 0 12px;
+  border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg);
+}
+input:focus-visible { outline: 3px solid var(--can); outline-offset: 2px; }
+.code { font-size: 2.6rem; font-weight: 500; letter-spacing: .25em; text-align: center; padding-left: .25em; }
+.note { margin: 0; min-height: 1.5em; color: var(--muted); font-size: .88rem; }
+.note.err { color: var(--enemy-text); }
+
+.status {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 6px 18px;
+  min-height: 2.6rem;
+  padding: 8px 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.stat { display: flex; align-items: baseline; gap: 6px; color: var(--muted); font-size: .85rem; }
+.stat b { color: var(--fg); font-size: 1.05rem; font-weight: 500; }
+.msg { flex: 1 1 12rem; min-width: 0; font-size: .9rem; }
+.is-won .msg { color: var(--goal); font-weight: 700; }
+.is-stuck .msg { color: var(--player-edge); font-weight: 500; }
+.is-killed .msg { color: var(--enemy-text); font-weight: 700; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .is-stuck .msg { color: var(--player); } }
+:root[data-theme="dark"] .is-stuck .msg { color: var(--player); }
+
+/* board with coordinate axes */
+.frame { display: grid; grid-template-columns: 1.4rem minmax(0, 1fr); grid-template-rows: auto 1.4rem; column-gap: 4px; }
+.axis { display: grid; gap: var(--gap); font-family: var(--font-mono); font-size: .68rem; color: var(--muted); }
+.axis span { display: grid; place-items: center; }
+.yaxis { grid-template-rows: repeat(10, 1fr); padding-block: 10px; }
+.xaxis { grid-column: 2; grid-template-columns: repeat(10, 1fr); padding-inline: 10px; }
+.plate { background: var(--plate); padding: 10px; border-radius: 14px; box-shadow: inset 0 1px 3px rgba(0,0,0,.18); }
+.grid { position: relative; display: grid; grid-template-columns: repeat(10, 1fr); gap: var(--gap); aspect-ratio: 1; }
+
+.cell { position: relative; border-radius: 7px; background: var(--pit); box-shadow: inset 0 3px 7px rgba(0,0,0,.55); }
+.cell.is-goal::before {
+  content: ""; position: absolute; inset: 24%; border-radius: 50%;
+  border: 2px dashed var(--goal); opacity: .8;
+}
+.tile {
+  position: absolute; inset: 0; border-radius: 7px;
+  background: var(--tile);
+  box-shadow: 0 3px 0 var(--tile-edge), inset 0 1px 0 var(--tile-hi);
+  transform: translateY(-2px);
+  transition: transform .3s cubic-bezier(.3, 1.5, .5, 1), opacity .22s ease, box-shadow .22s ease;
+  display: grid; place-items: center;
+}
+.is-start .tile { background: var(--start-tile); box-shadow: 0 3px 0 var(--start-edge), inset 0 1px 0 var(--tile-hi); }
+.is-goal .tile { background: var(--goal-tile); box-shadow: 0 3px 0 var(--goal-edge), inset 0 1px 0 var(--tile-hi); }
+.cell.down .tile { transform: translateY(6px) scale(.7); opacity: 0; box-shadow: none; }
+.mark { font-size: min(.9rem, 3.3vw); font-weight: 700; color: var(--muted); pointer-events: none; }
+.is-goal .mark { color: var(--goal); }
+
+.cell.can { cursor: pointer; }
+.cell.can .tile::after {
+  content: ""; width: 22%; aspect-ratio: 1; border-radius: 50%;
+  background: var(--can); opacity: .55;
+}
+.cell.atk .tile::after { background: var(--enemy); width: 34%; opacity: .9; }
+.cell.can:hover .tile { transform: translateY(-5px); }
+.cell.can:hover .tile::after { opacity: 1; }
+.ring {
+  position: absolute; inset: -1px; border-radius: 8px; border: 2px solid var(--can);
+  opacity: 0; pointer-events: none; z-index: 1;
+}
+
+.piece {
+  position: absolute; z-index: 2; pointer-events: none;
+  width: calc((100% - 9 * var(--gap)) / 10);
+  aspect-ratio: 1;
+  left: calc((100% + var(--gap)) / 10 * var(--px));
+  top: calc((100% + var(--gap)) / 10 * var(--py));
+  transition: left .16s ease-out, top .16s ease-out;
+}
+.player { z-index: 3; }
+.piece.tp, .piece.ghost { transition: none; }
+.token {
+  position: absolute; inset: 17%; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff4cf 0, var(--player) 45%);
+  box-shadow: 0 4px 0 var(--player-edge), 0 8px 8px rgba(0,0,0,.3);
+  transform: translateY(-5px);
+}
+.enemy .token {
+  background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--enemy) 55%, white) 0, var(--enemy) 45%);
+  box-shadow: 0 4px 0 var(--enemy-edge), 0 8px 8px rgba(0,0,0,.3);
+}
+.piece.winner .token { animation: glow .9s ease-in-out infinite alternate; }
+.enemy.winner .token { animation-name: glow2; }
+@keyframes glow {
+  from { box-shadow: 0 4px 0 var(--player-edge), 0 0 0 3px var(--goal), 0 8px 8px rgba(0,0,0,.3); }
+  to   { box-shadow: 0 4px 0 var(--player-edge), 0 0 0 9px transparent, 0 8px 8px rgba(0,0,0,.3); }
+}
+@keyframes glow2 {
+  from { box-shadow: 0 4px 0 var(--enemy-edge), 0 0 0 3px var(--goal), 0 8px 8px rgba(0,0,0,.3); }
+  to   { box-shadow: 0 4px 0 var(--enemy-edge), 0 0 0 9px transparent, 0 8px 8px rgba(0,0,0,.3); }
+}
+
+.actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+button {
+  font: inherit; font-weight: 500; min-height: 46px; padding: 0 14px;
+  border-radius: 10px; border: 1px solid var(--line); cursor: pointer;
+  background: var(--panel); color: var(--fg);
+  transition: transform .08s ease, opacity .15s ease, border-color .15s ease;
+}
+button.primary { background: var(--btn-bg); color: var(--btn-fg); border-color: var(--btn-bg); }
+button:active:not(:disabled) { transform: translateY(1px); }
+button:disabled { opacity: .4; cursor: not-allowed; }
+button:focus-visible { outline: 3px solid var(--can); outline-offset: 2px; }
+.footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 14px; color: var(--muted); font-size: .8rem; }
+kbd {
+  font-family: var(--font-mono); font-size: .75rem; padding: 1px 6px; border-radius: 5px;
+  border: 1px solid var(--line); border-bottom-width: 2px; background: var(--panel); color: var(--fg);
+}
+.link { min-height: 0; padding: 2px 4px; border: 0; background: none; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; font-size: .8rem; }
+.link:hover { color: var(--fg); }
+
+@media (prefers-reduced-motion: reduce) {
+  .tile, .piece, button { transition: none; }
+  .piece.winner .token { animation: none; }
+}
+</style>
+</head>
+<body>
+
+<main class="menu" id="menu">
+  <h1 class="logo" aria-label="Up and Down"><span class="up">Up</span><span class="amp">&amp;</span><span class="dn">Down</span></h1>
+  <div class="menu-list">
+    <button class="menu-btn" id="goSolo" type="button">單人遊戲 <small>1P</small></button>
+    <button class="menu-btn" id="goFoes" type="button">單人遊戲含敵人 <small>1P + 2 敵人</small></button>
+    <button class="menu-btn" id="goAi" type="button">單人對戰 AI <small>1P vs AI</small></button>
+    <button class="menu-btn" id="goDuel" type="button">雙人遊戲 <small>ONLINE 2P</small></button>
+  </div>
+</main>
+
+<main class="lobby" id="lobby" hidden>
+  <header class="topbar">
+    <h1>雙人遊戲</h1>
+    <button class="link" id="lobbyBack" type="button">← 主選單</button>
+  </header>
+  <div class="panel" id="lobbyHome">
+    <button class="primary" id="createRoom" type="button">建立房間</button>
+    <div class="or">或輸入房間號碼</div>
+    <form class="join" id="joinForm">
+      <input id="roomInput" inputmode="numeric" maxlength="4" placeholder="4 位數房間號碼" autocomplete="off" aria-label="房間號碼">
+      <button id="joinBtn" type="submit">加入房間</button>
+    </form>
+  </div>
+  <div class="panel" id="lobbyWait" hidden>
+    <div class="or">房間號碼</div>
+    <div class="code mono" id="waitCode"></div>
+    <div class="or">等待另一位玩家輸入這個號碼加入…</div>
+    <button id="cancelRoom" type="button">取消</button>
+  </div>
+  <p class="note" id="lobbyNote" role="status"></p>
+</main>
+
+<main class="game" id="game" hidden>
+  <header class="topbar">
+    <h1>Up&amp;Down</h1>
+    <button class="link" id="toMenu" type="button">← 主選單</button>
+  </header>
+
+  <div class="status" id="status" aria-live="polite">
+    <div class="stat" data-solo>步數 <b class="mono" id="steps">0</b></div>
+    <div class="stat" data-solo>位置 <b class="mono" id="where">(1,1)</b></div>
+    <div class="stat" data-duel hidden><span id="roomLabel">房間</span> <b class="mono" id="roomCode"></b></div>
+    <div class="stat" data-duel hidden>你是 <b id="meTag"></b></div>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <div class="frame">
+    <div class="axis yaxis" id="yaxis" aria-hidden="true"></div>
+    <div class="plate"><div class="grid" id="grid"></div></div>
+    <div class="axis xaxis" id="xaxis" aria-hidden="true"></div>
+  </div>
+
+  <div class="actions" id="soloActions">
+    <button class="primary" id="undo" type="button">↶ 回到上一步</button>
+    <button id="restart" type="button">↺ 從頭開始</button>
+  </div>
+  <button class="primary" id="dRematch" type="button" hidden>再來一局</button>
+  <div class="actions" id="duelActions" hidden>
+    <button class="primary" id="dUndo" type="button">↶ 返回上一步</button>
+    <button id="dLeave" type="button">離開房間</button>
+  </div>
+
+  <div class="footer">
+    <span id="hintSolo">點擊相鄰的升起格，或按 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動</span>
+    <span id="hintDuel" hidden>輪到你時，點擊相鄰格或按 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動；點選相鄰的對手就是攻擊</span>
+    <button class="link" id="fresh" type="button">換一個新盤面</button>
+  </div>
+</main>
+
+<script>
+const N = 10;
+
+// <logic>
+const DIRS = [[0, 1], [0, -1], [-1, 0], [1, 0]];            // up, down, left, right (y grows upward)
+const idx = (x, y) => (y - 1) * N + (x - 1);
+const inside = (x, y) => x >= 1 && x <= N && y >= 1 && y <= N;
+const isStart = (x, y) => x === 1 && y === 1;
+
+// Flip the four cells around (x,y); (x,y) itself, the start cell and any cell in `occupied` are never touched.
+function toggleAround(grid, x, y, occupied = []) {
+  const g = grid.slice();
+  for (const [dx, dy] of DIRS) {
+    const nx = x + dx, ny = y + dy;
+    if (inside(nx, ny) && !isStart(nx, ny) && !occupied.some(o => o.x === nx && o.y === ny)) g[idx(nx, ny)] ^= 1;
+  }
+  return g;
+}
+
+// Returns the new grid after stepping from pos to (x,y), or null if the step is illegal.
+function applyMove(grid, pos, x, y, occupied = []) {
+  if (!inside(x, y)) return null;
+  if (Math.abs(x - pos.x) + Math.abs(y - pos.y) !== 1) return null;
+  if (!grid[idx(x, y)]) return null;
+  return toggleAround(grid, x, y, occupied);
+}
+
+// Builds a board that is guaranteed solvable: walk a random route from (1,1) to (10,10),
+// fixing each visited cell to "up" at the moment it is stepped on (tracked through the
+// parity of earlier flips), then fill every untouched cell at random.
+function makePuzzle(minSteps = 30) {
+  for (;;) {
+    const init = new Array(N * N).fill(null);
+    const par = new Array(N * N).fill(0);
+    const path = [];
+    let x = 1, y = 1, reached = false;
+    init[idx(1, 1)] = 1;
+    for (let i = 0; i < 300; i++) {
+      if (x === N && y === N) { reached = true; break; }
+      const opts = [];
+      for (const [dx, dy] of DIRS) {
+        const nx = x + dx, ny = y + dy;
+        if (!inside(nx, ny)) continue;
+        const k = idx(nx, ny);
+        if (init[k] === null || (init[k] ^ par[k]) === 1) opts.push([nx, ny]);
+      }
+      if (!opts.length) break;
+      const d = (a, b) => (N - a) + (N - b);
+      const closer = opts.filter(([a, b]) => d(a, b) < d(x, y));
+      const pool = closer.length && Math.random() < 0.55 ? closer : opts;
+      const [nx, ny] = pool[Math.floor(Math.random() * pool.length)];
+      const k = idx(nx, ny);
+      if (init[k] === null) init[k] = 1 ^ par[k];
+      for (const [dx, dy] of DIRS) {
+        const ax = nx + dx, ay = ny + dy;
+        if (inside(ax, ay) && !isStart(ax, ay)) par[idx(ax, ay)] ^= 1;
+      }
+      x = nx; y = ny;
+      path.push([nx, ny]);
+    }
+    if (!reached || path.length < minSteps) continue;
+    const grid = init.map(v => (v === null ? (Math.random() < 0.5 ? 1 : 0) : v));
+    return { grid, path };
+  }
+}
+
+/* ----- enemies: they wander at random, one step per player step, with the player's own movement rules
+   (one orthogonal step onto an up cell) and they flip the cells around them as well.
+   The one exception: they may not enter the start cell, the player's safe spot. ----- */
+const ENEMY_COUNT = 2;
+const dist = (a, b) => Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+const same = (a, b) => a.x === b.x && a.y === b.y;
+const pick = (arr, rnd) => arr[Math.floor(rnd() * arr.length)];
+
+// Up cells an enemy may be put on; never the start, never a taken cell, optionally >= minDist from `from`.
+function freeUpCells(grid, taken, from, minDist) {
+  const out = [];
+  for (let y = 1; y <= N; y++) {
+    for (let x = 1; x <= N; x++) {
+      if (!grid[idx(x, y)] || isStart(x, y)) continue;
+      if (taken.some(t => t.x === x && t.y === y)) continue;
+      if (from && dist(from, { x, y }) < minDist) continue;
+      out.push({ x, y });
+    }
+  }
+  return out;
+}
+function placeEnemies(grid, rnd = Math.random) {
+  const START = { x: 1, y: 1 };
+  let enemies = [];
+  for (let attempt = 0; attempt < 30; attempt++) {
+    enemies = [];
+    for (let i = 0; i < ENEMY_COUNT; i++) {
+      const c = freeUpCells(grid, [...enemies, { x: N, y: N }], START, 6);
+      // never start an enemy where it would be sealed in within a few steps
+      const roomy = c.filter(p => survives(grid, p, START, enemies, 4));
+      const pool = roomy.length ? roomy : c;
+      if (pool.length) enemies.push(pick(pool, rnd));
+    }
+    // placing the second one may have boxed in the first, so check them all together
+    if (enemies.every((e, i) => survives(grid, e, START, enemies.filter((_, j) => j !== i), 4))) break;
+  }
+  return enemies;
+}
+
+// Up cells an enemy standing on `from` can step to (never the start, never onto another enemy).
+function exitsFrom(grid, from, others) {
+  return DIRS.map(([dx, dy]) => ({ x: from.x + dx, y: from.y + dy })).filter(p =>
+    inside(p.x, p.y) && grid[idx(p.x, p.y)] && !isStart(p.x, p.y) && !others.some(o => same(o, p)));
+}
+// Can an enemy standing on `at` keep moving for `depth` more steps? Its own flips are simulated;
+// the player and the other enemies are treated as standing still.
+function survives(grid, at, me, others, depth) {
+  if (depth === 0) return true;
+  return exitsFrom(grid, at, others).some(q =>
+    survives(toggleAround(grid, q.x, q.y, [me, ...others]), q, me, others, depth - 1));
+}
+
+// One full turn: the player steps to (x,y) and flips its surroundings, then each enemy in turn steps and
+// flips its own. A tile with anyone standing on it never sinks. Returns null for an illegal step.
+//  - the player dies when stepping onto an enemy, or when an enemy steps onto the player; he goes back
+//    to the start and the cells around the start rise
+//  - reaching the goal ends the turn before the enemies move
+function takeTurn(s, x, y, rnd = Math.random) {
+  const enemies = s.enemies.map(e => ({ ...e }));
+  let grid = applyMove(s.grid, s.pos, x, y, enemies);
+  if (!grid) return null;
+  const START = { x: 1, y: 1 };
+  let me = { x, y };
+  let killed = false, killedAt = null;
+  if (enemies.some(e => same(e, me))) { killed = true; killedAt = me; me = START; }
+  const won = !killed && x === N && y === N;
+  if (!won) {
+    enemies.forEach((e, i) => {
+      const others = enemies.filter((_, j) => j !== i);
+      const opts = exitsFrom(grid, e, others);
+      if (!opts.length) return;
+      // wander at random, but prefer steps after which the enemy is not about to be sealed in
+      let pool = opts;
+      for (const depth of [3, 2, 1]) {
+        const ok = opts.filter(p => survives(toggleAround(grid, p.x, p.y, [me, ...others]), p, me, others, depth));
+        if (ok.length) { pool = ok; break; }
+      }
+      const p = pick(pool, rnd);
+      enemies[i] = p;
+      if (same(p, me)) { killed = true; killedAt = p; me = START; }
+      grid = toggleAround(grid, p.x, p.y, [me, ...enemies]);
+    });
+  }
+  if (killed) {
+    grid = grid.slice();
+    for (const [dx, dy] of DIRS) {
+      const ax = 1 + dx, ay = 1 + dy;
+      if (inside(ax, ay)) grid[idx(ax, ay)] = 1;
+    }
+  }
+  return { grid, enemies, pos: me, won, killed, killedAt };
+}
+
+/* ----- level check: an automatic player tries a level before it is handed out ----- */
+// Plays with the real turn rules and "undo", the way a person could, and says whether it reached the goal.
+// Any state it visits can be returned to by undo / restart, so one win means the level is winnable.
+function botCanWin(grid, enemies, { budget, greedy, maxUndo, restartEvery }) {
+  const first = { grid, pos: { x: 1, y: 1 }, enemies };
+  const hist = [];
+  let s = first, sinceRestart = 0;
+  const dGoal = m => (N - m[0]) + (N - m[1]);
+  for (let turns = 0; turns < budget; turns++) {
+    if (sinceRestart > restartEvery) { s = first; hist.length = 0; sinceRestart = 0; }
+    const moves = DIRS.map(([dx, dy]) => [s.pos.x + dx, s.pos.y + dy])
+      .filter(([x, y]) => inside(x, y) && s.grid[idx(x, y)]);
+    if (!moves.length) {
+      if (!hist.length) { s = first; sinceRestart = 0; continue; }       // start over
+      const k = 1 + Math.floor(Math.random() * maxUndo);
+      for (let i = 0; i < k && hist.length; i++) s = hist.pop();       // undo a few steps
+      continue;
+    }
+    let m;
+    if (Math.random() < greedy) {
+      const best = Math.min(...moves.map(dGoal));
+      m = pick(moves.filter(c => dGoal(c) === best), Math.random);
+    } else {
+      m = pick(moves, Math.random);
+    }
+    hist.push(s);
+    const r = takeTurn(s, m[0], m[1]);
+    sinceRestart++;
+    if (r.won) return true;
+    s = { grid: r.grid, pos: r.pos, enemies: r.enemies };
+    if (hist.length > 2000) hist.splice(0, 500);
+  }
+  return false;
+}
+const BOT_TRIES = [
+  { budget: 20000, greedy: .7, maxUndo: 4, restartEvery: Infinity },
+  { budget: 40000, greedy: .3, maxUndo: 12, restartEvery: 3000 },
+  { budget: 40000, greedy: .9, maxUndo: 20, restartEvery: 2000 },
+];
+const levelIsWinnable = (grid, enemies) => BOT_TRIES.some(t => botCanWin(grid, enemies, t));
+
+// A random board with enemies, kept only if the bot can get through it. Nothing else is asked of the layout.
+function makeLevel() {
+  for (;;) {
+    const { grid } = makePuzzle();
+    const enemies = placeEnemies(grid);
+    if (levelIsWinnable(grid, enemies)) return { grid, enemies };
+  }
+}
+
+/* ----- two-player duel: 1P starts at (1,1), 2P at (10,10); each wants the opposite corner.
+   Players alternate; a turn is ONE of: step to an adjacent up cell, attack (= step onto the other player,
+   who goes back to his start), or undo (go back to the cell you were on before your last step). ----- */
+const DUEL_FIXED = [{ x: 1, y: 1 }, { x: N, y: N }];            // both home cells never flip
+const duelStart = p => (p === 0 ? { x: 1, y: 1 } : { x: N, y: N });
+const duelGoal = p => duelStart(1 - p);
+// The two cells next to player p's start, raised: whoever is sent home must always have a way out.
+function raiseHome(grid, p) {
+  const s = duelStart(p), g = grid.slice();
+  for (const [dx, dy] of DIRS) if (inside(s.x + dx, s.y + dy)) g[idx(s.x + dx, s.y + dy)] = 1;
+  return g;
+}
+const HIST_CAP = 40;
+
+function cornersConnected(grid) {
+  const seen = new Set([idx(1, 1)]);
+  const stack = [{ x: 1, y: 1 }];
+  while (stack.length) {
+    const c = stack.pop();
+    if (c.x === N && c.y === N) return true;
+    for (const [dx, dy] of DIRS) {
+      const x = c.x + dx, y = c.y + dy;
+      if (inside(x, y) && grid[idx(x, y)] && !seen.has(idx(x, y))) { seen.add(idx(x, y)); stack.push({ x, y }); }
+    }
+  }
+  return false;
+}
+// Random board; both corners up, each with a way out, and the corners joined by up cells at the start.
+// The 5x5 block around 2P's start is the 5x5 block around 1P's start turned half a circle, so both players
+// begin with the same cells around them (seen from their own corner) and neither gets a lucky opening.
+const DUEL_SAFE = 5;
+function duelBoard(rnd = Math.random) {
+  for (;;) {
+    const grid = Array.from({ length: N * N }, () => (rnd() < 0.6 ? 1 : 0));
+    for (let y = 1; y <= DUEL_SAFE; y++) for (let x = 1; x <= DUEL_SAFE; x++) grid[idx(N + 1 - x, N + 1 - y)] = grid[idx(x, y)];
+    grid[idx(1, 1)] = 1; grid[idx(N, N)] = 1;
+    if (!grid[idx(2, 1)] && !grid[idx(1, 2)]) continue;
+    if (!grid[idx(N - 1, N)] && !grid[idx(N, N - 1)]) continue;
+    if (cornersConnected(grid)) return grid;
+  }
+}
+const duelNew = (round, rnd = Math.random) =>
+  ({ grid: duelBoard(rnd), pos: [duelStart(0), duelStart(1)], hist: [[], []], turn: round % 2, winner: null });  // winner: null | 0 | 1 | 2 (draw)
+
+// Cells player p may step onto (an adjacent up cell; `attack` when the other player stands there).
+function duelMoves(st, p) {
+  const me = st.pos[p], foe = st.pos[1 - p];
+  return DIRS.map(([dx, dy]) => ({ x: me.x + dx, y: me.y + dy }))
+    .filter(t => inside(t.x, t.y) && st.grid[idx(t.x, t.y)])
+    .map(t => ({ ...t, attack: same(t, foe) }));
+}
+const duelHasAction = (st, p) => st.hist[p].length > 0 || duelMoves(st, p).length > 0;
+
+// Plays one action for player p: {type:'move', x, y} (an attack when the target holds the other player) or {type:'undo'}.
+// Returns {st, ev} or null when the action is illegal. A player with nothing to do is skipped; two in a row is a draw.
+function duelApply(st, p, a) {
+  if (st.winner !== null || st.turn !== p) return null;
+  const q = 1 - p;
+  let grid = st.grid;
+  const pos = st.pos.map(c => ({ ...c }));
+  const hist = st.hist.map(h => h.slice());
+  const ev = { by: p, type: a.type, killed: null, passed: null };
+  if (a.type === 'move') {
+    const t = { x: a.x, y: a.y };
+    if (!duelMoves(st, p).some(m => same(m, t))) return null;
+    const attack = same(t, pos[q]);
+    hist[p].push({ ...pos[p] });
+    if (hist[p].length > HIST_CAP) hist[p].shift();
+    grid = toggleAround(grid, t.x, t.y, [pos[q], ...DUEL_FIXED]);
+    pos[p] = t;
+    if (attack) {
+      ev.type = 'attack';
+      if (!same(t, duelGoal(p))) { pos[q] = duelStart(q); hist[q] = []; ev.killed = q; }   // reaching the goal wins instead
+    }
+  } else if (a.type === 'undo') {
+    const prev = hist[p].pop();
+    if (!prev) return null;
+    if (same(prev, pos[q])) {
+      pos[p] = duelStart(p); hist[p] = []; ev.killed = p;           // the cell is taken: sent home, nothing flips
+    } else {
+      grid = grid.slice();
+      grid[idx(prev.x, prev.y)] = 1;                                // a sunken cell is raised for him
+      grid = toggleAround(grid, prev.x, prev.y, [pos[q], ...DUEL_FIXED]);
+      const left = pos[p];
+      pos[p] = prev;
+      // his own flips may have boxed him in; then the cell he just left stays open so he always has a way on
+      if (!duelMoves({ grid, pos }, p).length) grid[idx(left.x, left.y)] = 1;
+    }
+  } else {
+    return null;
+  }
+  if (ev.killed !== null) grid = raiseHome(grid, ev.killed);
+  const out = { grid, pos, hist, turn: q, winner: same(pos[p], duelGoal(p)) ? p : null };
+  if (out.winner === null && !duelHasAction(out, q)) {
+    ev.passed = q;
+    out.turn = p;
+    if (!duelHasAction(out, p)) out.winner = 2;
+  }
+  return { st: out, ev };
+}
+
+/* ----- computer opponent for the duel: a short look-ahead search over the real rules ----- */
+// Steps from `from` to `to` over up cells (30 when cut off). The board keeps changing, so this is only an estimate.
+function pathLen(grid, from, to) {
+  if (same(from, to)) return 0;
+  const seen = new Set([idx(from.x, from.y)]);
+  let frontier = [from];
+  for (let d = 1; frontier.length; d++) {
+    const next = [];
+    for (const c of frontier) {
+      for (const [dx, dy] of DIRS) {
+        const x = c.x + dx, y = c.y + dy;
+        if (!inside(x, y) || !grid[idx(x, y)] || seen.has(idx(x, y))) continue;
+        if (x === to.x && y === to.y) return d;
+        seen.add(idx(x, y));
+        next.push({ x, y });
+      }
+    }
+    frontier = next;
+  }
+  return 30;
+}
+// What the computer cares about, most important first: getting to its own goal (own, progress), not walking in
+// circles (repeat, undo), and then holding the other player back (opp). Distance is the straight-line distance:
+// every step flips the cells next to it, so a path over today's up cells says little about tomorrow's board.
+const AI_W = { man: 1, own: 4, opp: 3, progress: 3, repeat: 4, undo: 8 };
+// How far ahead `me` is: the other player's distance to his goal, against my own distance weighed more heavily.
+const aiDist = (st, p, w) => (w.man ? dist(st.pos[p], duelGoal(p)) : pathLen(st.grid, st.pos[p], duelGoal(p)));
+const aiEval = (st, me, w = AI_W) => w.opp * aiDist(st, 1 - me, w) - w.own * aiDist(st, me, w);
+// Every action player p may take, attacks first.
+function duelOptions(st, p) {
+  const opts = duelMoves(st, p).sort((a, b) => b.attack - a.attack).map(m => ({ type: 'move', x: m.x, y: m.y }));
+  if (st.hist[p].length) opts.push({ type: 'undo' });
+  return opts;
+}
+function aiSearch(st, me, depth, alpha, beta, w) {
+  if (st.winner !== null) return st.winner === me ? 1000 + depth : st.winner === 1 - me ? -1000 - depth : 0;
+  if (depth === 0) return aiEval(st, me, w);
+  const p = st.turn, maxing = p === me;
+  let best = maxing ? -Infinity : Infinity;
+  for (const a of duelOptions(st, p)) {
+    const v = aiSearch(duelApply(st, p, a).st, me, depth - 1, alpha, beta, w);
+    if (maxing) { best = Math.max(best, v); alpha = Math.max(alpha, best); }
+    else { best = Math.min(best, v); beta = Math.min(beta, best); }
+    if (beta <= alpha) break;
+  }
+  return best;
+}
+// The action `me` plays on his turn. `recent` lists the cells ("x,y") he stood on lately; stepping back onto
+// one is discouraged, undoing even more, and every step that shortens his way to the goal is rewarded.
+// A little noise keeps equal choices from always going the same way.
+function aiPick(st, me, depth = 8, rnd = Math.random, recent = [], w = AI_W) {
+  const before = aiDist(st, me, w);
+  let best = null, bestV = -Infinity;
+  for (const a of duelOptions(st, me)) {
+    const res = duelApply(st, me, a);
+    let v = aiSearch(res.st, me, depth - 1, -Infinity, Infinity, w) + rnd() * 0.5;
+    if (a.type === 'undo') v -= w.undo;
+    else {
+      v += w.progress * (before - aiDist(res.st, me, w));
+      if (recent.includes(`${res.st.pos[me].x},${res.st.pos[me].y}`)) v -= w.repeat;
+    }
+    if (v > bestV) { bestV = v; best = a; }
+  }
+  return best;
+}
+
+// ----- room document <-> room object (the shape kept in the shared database) -----
+const noLast = () => ({ n: 0, by: -1, type: '', killed: -1, passed: -1 });
+const newRoom = (code, owner) => ({
+  code, rev: 1, round: 0, phase: 'waiting', p: [owner, ''], left: [false, false], reason: '',
+  st: duelNew(0), last: noLast(), updatedAt: Date.now(),
+});
+function roomToDoc(r) {
+  const flat = h => h.flatMap(c => [c.x, c.y]);
+  return {
+    code: r.code, rev: r.rev, round: r.round, phase: r.phase, p1: r.p[0], p2: r.p[1],
+    left1: r.left[0], left2: r.left[1], reason: r.reason,
+    grid: r.st.grid.join(''),
+    pos: [r.st.pos[0].x, r.st.pos[0].y, r.st.pos[1].x, r.st.pos[1].y],
+    hist1: flat(r.st.hist[0]), hist2: flat(r.st.hist[1]),
+    turn: r.st.turn, winner: r.st.winner === null ? -1 : r.st.winner,
+    last: { ...r.last }, updatedAt: r.updatedAt,
+  };
+}
+function docToRoom(d) {
+  const unflat = a => { const o = []; for (let i = 0; i + 1 < a.length; i += 2) o.push({ x: a[i], y: a[i + 1] }); return o; };
+  return {
+    code: d.code, rev: d.rev, round: d.round, phase: d.phase, p: [d.p1, d.p2], left: [!!d.left1, !!d.left2], reason: d.reason || '',
+    st: {
+      grid: Array.from(d.grid, c => +c),
+      pos: [{ x: d.pos[0], y: d.pos[1] }, { x: d.pos[2], y: d.pos[3] }],
+      hist: [unflat(d.hist1 || []), unflat(d.hist2 || [])],
+      turn: d.turn, winner: d.winner < 0 ? null : d.winner,
+    },
+    last: { ...noLast(), ...(d.last || {}) }, updatedAt: d.updatedAt || 0,
+  };
+}
+// </logic>
+
+/* ---------- UI ---------- */
+const $ = id => document.getElementById(id);
+const gridEl = $('grid');
+const cells = new Array(N * N);
+
+for (let y = N; y >= 1; y--) {
+  for (let x = 1; x <= N; x++) {
+    const c = document.createElement('div');
+    c.className = 'cell';
+    c.dataset.x = x; c.dataset.y = y;
+    c.title = `(${x},${y})`;
+    const t = document.createElement('div');
+    t.className = 'tile';
+    if (x === 1 && y === 1) { c.classList.add('is-start'); t.innerHTML = '<span class="mark">起</span>'; }
+    if (x === N && y === N) { c.classList.add('is-goal'); t.innerHTML = '<span class="mark">終</span>'; }
+    const r = document.createElement('div');
+    r.className = 'ring';
+    c.append(t, r);
+    gridEl.append(c);
+    cells[idx(x, y)] = c;
+  }
+}
+const playerEl = document.createElement('div');
+playerEl.className = 'piece player';
+playerEl.innerHTML = '<div class="token"></div>';
+gridEl.append(playerEl);
+const tokenEl = playerEl.firstElementChild;
+const enemyEls = Array.from({ length: ENEMY_COUNT }, () => {
+  const el = document.createElement('div');
+  el.className = 'piece enemy';
+  el.innerHTML = '<div class="token"></div>';
+  gridEl.append(el);
+  return el;
+});
+
+for (let i = 1; i <= N; i++) {
+  $('xaxis').insertAdjacentHTML('beforeend', `<span>${i}</span>`);
+  $('yaxis').insertAdjacentHTML('afterbegin', `<span>${i}</span>`);
+}
+
+/* ---------- screens ---------- */
+let mode = 'menu';      // 'menu' | 'solo' | 'foes' | 'ai' | 'duel'
+let view = 'menu';      // 'menu' | 'lobby' | 'game'
+const isDuel = () => mode === 'duel' || mode === 'ai';     // both use the two-player board and rules
+function showView(v) {
+  view = v;
+  for (const id of ['menu', 'lobby', 'game']) $(id).hidden = id !== v;
+  window.scrollTo(0, 0);
+}
+// Mark the viewer's own start (起) and goal (終). In the two-player game 2P sees the corners the other way round,
+// so each side looks at the board exactly like the one-player game; this is a display choice only and is never shared.
+function setCorners(flip) {
+  const a = cells[idx(1, 1)], b = cells[idx(N, N)];
+  const [s, g] = flip ? [b, a] : [a, b];
+  s.classList.add('is-start'); s.classList.remove('is-goal'); s.querySelector('.mark').textContent = '起';
+  g.classList.add('is-goal'); g.classList.remove('is-start'); g.querySelector('.mark').textContent = '終';
+}
+// Switch the game screen between the one-player and the two-player furniture.
+function applyModeUI() {
+  const duelMode = isDuel();
+  $('dLeave').textContent = mode === 'ai' ? '結束對戰' : '離開房間';
+  gridEl.classList.toggle('duel', duelMode);
+  setCorners(false);
+  document.querySelectorAll('[data-solo]').forEach(e => { e.hidden = duelMode; });
+  document.querySelectorAll('[data-duel]').forEach(e => { e.hidden = !duelMode; });
+  $('soloActions').hidden = duelMode;
+  $('duelActions').hidden = !duelMode;
+  $('dRematch').hidden = true;
+  $('hintSolo').hidden = duelMode;
+  $('hintDuel').hidden = !duelMode;
+  $('fresh').hidden = duelMode;
+  [playerEl, ...enemyEls].forEach(p => p.classList.remove('winner'));
+  $('game').classList.remove('is-won');
+  $('status').classList.remove('is-killed', 'is-stuck');
+}
+
+/* ---------- one-player game ---------- */
+let initGrid, initEnemies, grid, pos, enemies, hist, won, note;
+
+function startSolo(withFoes) {
+  mode = withFoes ? 'foes' : 'solo';
+  applyModeUI();
+  showView('game');
+  newPuzzle();
+}
+function newPuzzle() {
+  if (mode === 'foes') ({ grid: initGrid, enemies: initEnemies } = makeLevel());
+  else { initGrid = makePuzzle().grid; initEnemies = []; }
+  restart();
+}
+function restart() {
+  grid = initGrid.slice();
+  enemies = initEnemies.map(e => ({ ...e }));
+  pos = { x: 1, y: 1 };
+  hist = [];
+  won = false;
+  note = '';
+  renderInstant();
+}
+// Render with every piece jumping straight to its place instead of sliding there.
+function renderInstant() {
+  const pieces = [playerEl, ...enemyEls];
+  pieces.forEach(p => p.classList.add('tp'));
+  render();
+  void gridEl.offsetWidth;
+  pieces.forEach(p => p.classList.remove('tp'));
+}
+
+function hasMove() {
+  return DIRS.some(([dx, dy]) => {
+    const nx = pos.x + dx, ny = pos.y + dy;
+    return inside(nx, ny) && grid[idx(nx, ny)];
+  });
+}
+
+function render() {
+  for (let y = 1; y <= N; y++) {
+    for (let x = 1; x <= N; x++) {
+      const c = cells[idx(x, y)];
+      const up = grid[idx(x, y)] === 1;
+      const adj = Math.abs(x - pos.x) + Math.abs(y - pos.y) === 1;
+      c.classList.toggle('down', !up);
+      c.classList.toggle('can', up && adj && !won);
+      c.classList.remove('atk');
+    }
+  }
+  playerEl.style.setProperty('--px', pos.x - 1);
+  playerEl.style.setProperty('--py', N - pos.y);
+  playerEl.classList.toggle('winner', won);
+  enemyEls.forEach((el, i) => {
+    const e = enemies[i];
+    el.hidden = !e;
+    if (!e) return;
+    el.style.setProperty('--px', e.x - 1);
+    el.style.setProperty('--py', N - e.y);
+  });
+  $('steps').textContent = hist.length;
+  $('where').textContent = `(${pos.x},${pos.y})`;
+  $('undo').disabled = hist.length === 0;
+
+  const killed = note === 'killed';
+  const stuck = !won && !killed && !hasMove();
+  $('game').classList.toggle('is-won', won);
+  $('status').classList.toggle('is-killed', killed);
+  $('status').classList.toggle('is-stuck', stuck);
+  $('msg').textContent = won
+    ? `抵達 (10,10)，共 ${hist.length} 步。`
+    : killed
+      ? '被敵人擊殺，退回起點，起點四周的格子升起了。'
+      : stuck
+        ? '四周的格子都沉下去了，按「回到上一步」換條路。'
+        : mode === 'foes' ? '亮點是可以走的格子，小心紅色敵人。' : '亮點是可以走的格子。';
+}
+
+function flashRing(c, color) {
+  const ring = c.querySelector('.ring');
+  ring.style.borderColor = color;
+  ring.animate(
+    [{ opacity: .95, transform: 'scale(.82)' }, { opacity: 0, transform: 'scale(1.22)' }],
+    { duration: 480, easing: 'ease-out' }
+  );
+}
+function shake(token = tokenEl) {
+  token.animate(
+    [0, -6, 6, -4, 4, 0].map(dx => ({ transform: `translate(${dx}px, -5px)` })),
+    { duration: 260 }
+  );
+}
+function bounce(token = tokenEl) {
+  token.animate(
+    [{ transform: 'translateY(-5px) scale(1)' }, { transform: 'translateY(-14px) scale(1.08)' }, { transform: 'translateY(-5px) scale(1)' }],
+    { duration: 240, easing: 'ease-out' }
+  );
+}
+
+// A copy of a piece that shrinks away where it was killed (kind: 'player' gold, 'enemy' red).
+function ghost(p, kind = 'player') {
+  const g = document.createElement('div');
+  g.className = `piece ghost ${kind}`;
+  g.style.setProperty('--px', p.x - 1);
+  g.style.setProperty('--py', N - p.y);
+  g.innerHTML = '<div class="token"></div>';
+  gridEl.append(g);
+  g.animate(
+    [{ transform: 'scale(1)', opacity: 1 }, { transform: 'scale(.1)', opacity: 0 }],
+    { duration: 380, easing: 'ease-in' }
+  ).onfinish = () => g.remove();
+}
+function spawnIn(el) {
+  el.animate(
+    [{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1)', opacity: 1 }],
+    { duration: 340, easing: 'ease-out' }
+  );
+}
+function flashAround(x, y, color = 'var(--can)') {
+  for (const [dx, dy] of DIRS) {
+    const ax = x + dx, ay = y + dy;
+    if (inside(ax, ay) && !isStart(ax, ay)) flashRing(cells[idx(ax, ay)], color);
+  }
+}
+
+function tryMove(x, y, src) {
+  if (won) return;
+  const adj = Math.abs(x - pos.x) + Math.abs(y - pos.y) === 1;
+  const r = takeTurn({ grid, pos, enemies }, x, y);
+  if (!r) {
+    if (src === 'key' || adj) shake();
+    return;
+  }
+  const prev = enemies;
+  hist.push({ grid, pos, enemies });
+  ({ grid, pos, enemies, won } = r);
+  note = r.killed ? 'killed' : '';
+
+  // a killed player jumps back to the start instead of sliding there
+  if (r.killed) playerEl.classList.add('tp');
+  render();
+  void gridEl.offsetWidth;
+  playerEl.classList.remove('tp');
+
+  if (r.killed) {
+    spawnIn(playerEl);
+    ghost(r.killedAt);
+    flashAround(1, 1);
+  } else {
+    bounce();
+  }
+  flashAround(x, y);
+  enemies.forEach((e, i) => { if (!same(e, prev[i])) flashAround(e.x, e.y, 'var(--enemy)'); });
+}
+
+function undo() {
+  if (!hist.length) return;
+  ({ grid, pos, enemies } = hist.pop());
+  won = false;
+  note = '';
+  renderInstant();
+}
+
+/* ---------- two-player game ----------
+   Inside claude.ai the room lives in the page's shared database. Anywhere else (a saved file, any web server)
+   the two browsers talk to each other directly over WebRTC; the room number is the connection id. */
+const STALE_MS = 6 * 3600 * 1000;
+const PEER_PREFIX = 'updown-room-v1-';
+const PEER_SRC = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js';
+const P = i => (i === 0 ? '1P' : '2P');
+const pieceOf = i => (i === 0 ? playerEl : enemyEls[0]);
+const clientId = (() => {
+  const fresh = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+  try {
+    let v = sessionStorage.getItem('updown-id');
+    if (!v) { v = fresh(); sessionStorage.setItem('updown-id', v); }
+    return v;
+  } catch (e) { return fresh(); }
+})();
+const inViewer = () => !!(window.claude && window.claude.use);
+// A framed page that may not load outside scripts (the claude.ai viewer for someone it does not give the database to)
+// cannot use the direct connection either; tell the player what to do instead of failing on a blocked script.
+let cspBlocked = false;
+document.addEventListener('securitypolicyviolation', () => { cspBlocked = true; });
+const framed = () => { try { return window.top !== window; } catch (e) { return true; } };
+const sandboxed = () => cspBlocked || framed() || location.protocol === 'about:';
+const sandboxNote = () => (inViewer()
+  ? '在 claude.ai 內雙人連線需要登入，並且要有「貢獻者」以上的權限（請房主分享給你）；也可以雙方都改用單檔版。'
+  : `這個頁面是在內嵌或預覽視窗裡開啟的，被限制不能直接連線。請把檔案存到電腦，用 Chrome、Edge 或 Safari 直接開啟（網址列應該以 file:// 或 https:// 開頭），不要在聊天軟體或信箱裡預覽。（目前環境：${location.protocol === 'about:' ? 'about:srcdoc' : location.protocol}）`);
+let dbPromise = null, userPromise = null, peerLoad = null;
+const getDb = () => (dbPromise ||= (inViewer() ? window.claude.use('db').catch(() => null) : Promise.resolve(null)));
+const getUser = () => (userPromise ||= (inViewer() ? window.claude.use('user').catch(() => null) : Promise.resolve(null)));
+function loadPeer() {
+  return (peerLoad ||= new Promise((resolve, reject) => {
+    if (window.Peer) { resolve(window.Peer); return; }
+    const s = document.createElement('script');
+    s.src = PEER_SRC;
+    s.onload = () => resolve(window.Peer);
+    s.onerror = () => { peerLoad = null; reject({ type: 'peerjs' }); };
+    document.head.append(s);
+  }));
+}
+
+let duel = null;        // { net, code, me, room, busy, local, aiTimer } while inside a room or an AI match
+
+function lobbyNote(text, isError) {
+  const n = $('lobbyNote');
+  n.textContent = text || '';
+  n.classList.toggle('err', !!isError);
+}
+function lobbyEnabled(on) {
+  ['createRoom', 'joinBtn', 'roomInput'].forEach(id => { $(id).disabled = !on; });
+}
+function errText(e) {
+  const t = e && (e.type || e.code || e.message);
+  if (t === 'peer-unavailable') return '找不到這個房間。請確認號碼，並確認房主的頁面還開著。';
+  if (t === 'full') return '這個房間已經滿了。';
+  if (t === 'timeout') return '連線逾時。請確認號碼與網路；雙方網路限制太多時也可能連不上。';
+  if (t === 'peerjs') return sandboxed() ? sandboxNote() : '載入連線元件失敗，請確認網路。';
+  if (t === 'invalid_argument') return '沒有寫入權限。請房主把你設為「貢獻者」以上的權限，並確認你已登入。';
+  return `連線失敗${t ? `（${t}）` : ''}，請再試一次。`;
+}
+function showWaiting(code) {
+  lobbyNote('');
+  $('waitCode').textContent = code;
+  $('lobbyHome').hidden = true;
+  $('lobbyWait').hidden = false;
+}
+
+async function openLobby() {
+  mode = 'duel';
+  showView('lobby');
+  $('lobbyHome').hidden = false;
+  $('lobbyWait').hidden = true;
+  lobbyEnabled(false);
+  lobbyNote('連線中…');
+  const db = await getDb();
+  if (db) {
+    const user = await getUser();
+    let canWrite = null;
+    try { canWrite = user && typeof user.can === 'function' ? await user.can('data.write') : null; } catch (e) { /* unknown */ }
+    if (canWrite === false) {
+      lobbyNote('你目前的權限只能觀看，無法建立或加入房間。請房主把你設為「貢獻者」以上。', true);
+      return;
+    }
+    lobbyNote('');
+  } else if (inViewer() || sandboxed()) {
+    lobbyNote(sandboxNote(), true);
+    return;
+  } else {
+    lobbyNote('直接連線：不需要帳號，雙方要同時開著這個頁面。');
+    try { await loadPeer(); } catch (e) { lobbyNote(errText(e), true); return; }
+  }
+  lobbyEnabled(true);
+}
+
+async function createRoom() {
+  lobbyEnabled(false);
+  lobbyNote('建立中…');
+  try {
+    const db = await getDb();
+    if (db) await createRoomDb(db); else await createRoomP2P();
+  } catch (e) {
+    lobbyNote(errText(e), true);
+    lobbyEnabled(true);
+  }
+}
+async function joinRoom(code) {
+  if (!/^\d{4}$/.test(code)) { lobbyNote('請輸入 4 位數的房間號碼。', true); return; }
+  lobbyEnabled(false);
+  lobbyNote('加入中…');
+  try {
+    const db = await getDb();
+    if (db) await joinRoomDb(db, code); else await joinRoomP2P(code);
+  } catch (e) {
+    lobbyNote(errText(e), true);
+    lobbyEnabled(true);
+  }
+}
+
+/* --- room kept in the shared database (claude.ai) --- */
+async function createRoomDb(db) {
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const code = String(1000 + Math.floor(Math.random() * 9000));
+    const ref = db.doc('rooms/' + code);
+    const snap = await ref.get();
+    if (snap.exists) {
+      const u = (snap.data() || {}).updatedAt;
+      if (!(u && Date.now() - u > STALE_MS)) continue;          // taken (or mid-creation)
+    }
+    const lease = await ref.acquire({ holder: clientId, ttlMs: 5000 });
+    if (!lease.acquired) continue;
+    const room = newRoom(code, clientId);
+    await ref.set(roomToDoc(room));
+    showWaiting(code);
+    enterRoom(dbNet(ref), room, 0);
+    return;
+  }
+  throw { type: 'no-code' };
+}
+async function joinRoomDb(db, code) {
+  const ref = db.doc('rooms/' + code);
+  let snap = await ref.get();
+  if (!snap.exists) throw { type: 'peer-unavailable' };
+  let room = docToRoom(snap.data());
+  let me = room.p[0] === clientId ? 0 : room.p[1] === clientId ? 1 : -1;      // coming back to a room I was in
+  if (me < 0) {
+    if (room.p[1] || room.phase !== 'waiting') throw { type: 'full' };
+    const lease = await ref.acquire({ holder: clientId, ttlMs: 5000 });
+    if (!lease.acquired) throw { type: 'busy' };
+    snap = await ref.get();
+    room = docToRoom(snap.data());
+    if (room.p[1] && room.p[1] !== clientId) throw { type: 'full' };
+    room = { ...room, p: [room.p[0], clientId], phase: 'playing', rev: room.rev + 1, updatedAt: Date.now() };
+    await ref.set(roomToDoc(room));
+    me = 1;
+  }
+  lobbyNote('');
+  if (me === 0 && room.phase === 'waiting') showWaiting(code);              // the host typing his own number
+  enterRoom(dbNet(ref), room, me);
+}
+// What the game needs from a connection: start(h) / stop() / publish(room) / rematch() / close(room, me).
+function dbNet(ref) {
+  let unsub = null, timer = null, H = null;
+  return {
+    start(h) {
+      H = h;
+      unsub = ref.onSnapshot(snap => {
+        if (!snap.exists) { if (!snap.metadata.fromCache) h.gone(); return; }
+        h.applyRemote(docToRoom(snap.data()));
+      }, () => { /* the poll below keeps the room alive */ });
+      timer = setInterval(async () => {
+        try {
+          const snap = await ref.get();
+          if (snap.exists) h.applyRemote(docToRoom(snap.data())); else h.gone();
+        } catch (e) { /* try again on the next tick */ }
+      }, 2500);
+    },
+    stop() { clearInterval(timer); if (unsub) unsub(); },
+    publish: room => ref.set(roomToDoc(room)),
+    async rematch() {
+      const lease = await ref.acquire({ holder: clientId, ttlMs: 4000 });
+      if (!lease.acquired) return;
+      const cur = docToRoom((await ref.get()).data());
+      const r = H.room();
+      if (cur.phase !== 'over' || cur.round !== r.round) { H.applyRemote(cur); return; }
+      const next = newRound(cur);
+      await ref.set(roomToDoc(next));
+      H.setRoom(next);
+    },
+    // Leaving closes a room nobody is waiting in; leaving mid-game hands the win to the other player.
+    async close(r, me) {
+      const mark = { ['left' + (me + 1)]: true, rev: (r ? r.rev : 0) + 1, updatedAt: Date.now() };
+      if (!r || r.phase === 'waiting') await ref.delete();
+      else if (r.phase === 'over') await (r.left[1 - me] ? ref.delete() : ref.update(mark));
+      else await ref.update({ ...mark, phase: 'over', winner: 1 - me, reason: 'left' });
+    },
+  };
+}
+
+/* --- room kept between the two browsers (WebRTC through PeerJS; the host is peer "updown-room-v1-<code>") --- */
+const wait = (ms) => new Promise(r => setTimeout(r, ms));
+function peerOpen(peer) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject({ type: 'timeout' }), 10000);
+    peer.on('open', () => { clearTimeout(timer); resolve(); });
+    peer.on('error', e => { clearTimeout(timer); reject(e); });
+  });
+}
+async function createRoomP2P() {
+  const Peer = await loadPeer();
+  for (let attempt = 0; attempt < 12; attempt++) {
+    const code = String(1000 + Math.floor(Math.random() * 9000));
+    const peer = new Peer(PEER_PREFIX + code);
+    try {
+      await peerOpen(peer);
+    } catch (e) {
+      try { peer.destroy(); } catch (x) { /* already gone */ }
+      if (e && e.type === 'unavailable-id') continue;                        // that number is in use
+      throw e;
+    }
+    const room = newRoom(code, clientId);
+    showWaiting(code);
+    enterRoom(p2pNet(peer, true, null), room, 0);
+    return;
+  }
+  throw { type: 'no-code' };
+}
+async function joinRoomP2P(code) {
+  const Peer = await loadPeer();
+  const peer = new Peer();
+  try {
+    await peerOpen(peer);
+    const conn = peer.connect(PEER_PREFIX + code, { reliable: true });
+    const room = await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject({ type: 'timeout' }), 10000);
+      peer.on('error', e => { clearTimeout(timer); reject(e); });
+      conn.on('close', () => { clearTimeout(timer); reject({ type: 'peer-unavailable' }); });
+      conn.on('data', msg => {
+        if (!msg || typeof msg !== 'object') return;
+        if (msg.t === 'full') { clearTimeout(timer); reject({ type: 'full' }); }
+        if (msg.t === 'room') { clearTimeout(timer); try { resolve(docToRoom(msg.doc)); } catch (e) { reject(e); } }
+      });
+    });
+    lobbyNote('');
+    enterRoom(p2pNet(peer, false, conn), room, 1);
+  } catch (e) {
+    try { peer.destroy(); } catch (x) { /* already gone */ }
+    throw e;
+  }
+}
+function p2pNet(peer, isHost, firstConn) {
+  let conn = firstConn, H = null;
+  const send = msg => { try { if (conn && conn.open) conn.send(msg); } catch (e) { /* the connection is going away */ } };
+  const onData = msg => {
+    if (!msg || typeof msg !== 'object') return;                     // whatever the other side sends is untrusted
+    if (msg.t === 'room') { try { H.applyRemote(docToRoom(msg.doc)); } catch (e) { /* malformed, ignore */ } }
+    else if (msg.t === 'left') H.peerLeft();
+    else if (msg.t === 'rematch' && isHost) H.rematch();
+  };
+  const bind = c => {
+    conn = c;
+    c.on('data', onData);
+    c.on('close', () => { if (conn === c) { conn = null; H.peerLeft(); } });
+    c.on('error', () => { if (conn === c) { conn = null; H.peerLeft(); } });
+  };
+  return {
+    start(h) {
+      H = h;
+      if (isHost) {
+        peer.on('connection', c => {
+          if (conn || H.room().phase !== 'waiting') {                  // one opponent only
+            c.on('open', () => { c.send({ t: 'full' }); setTimeout(() => c.close(), 300); });
+            return;
+          }
+          conn = c;
+          c.on('open', () => { bind(c); H.joined(c.peer); });
+        });
+        peer.on('disconnected', () => { try { peer.reconnect(); } catch (e) { /* keep what we have */ } });
+      } else {
+        bind(conn);
+      }
+    },
+    stop() {
+      try { if (conn) conn.close(); } catch (e) { /* already closed */ }
+      try { peer.destroy(); } catch (e) { /* already gone */ }
+    },
+    publish(room) { send({ t: 'room', doc: roomToDoc(room) }); return Promise.resolve(); },
+    async rematch() {
+      if (!isHost) { send({ t: 'rematch' }); return; }
+      const next = newRound(H.room());
+      H.setRoom(next);
+      send({ t: 'room', doc: roomToDoc(next) });
+    },
+    async close() { send({ t: 'left' }); await wait(150); },
+  };
+}
+
+/* --- the game itself, the same on either connection --- */
+const newRound = r => ({ ...r, round: r.round + 1, phase: 'playing', reason: '', rev: r.rev + 1, st: duelNew(r.round + 1), last: noLast(), updatedAt: Date.now() });
+
+function enterRoom(net, room, me) {
+  const d = { net, code: room.code, me, room: null, busy: false, local: false };
+  duel = d;
+  const live = fn => (...a) => { if (duel === d) fn(...a); };
+  net.start({
+    room: () => d.room,
+    applyRemote: live(applyRemote),
+    setRoom: live(setRoom),
+    gone: live(roomGone),
+    peerLeft: live(peerLeft),
+    joined: live(hostJoined),
+    rematch: live(rematch),
+  });
+  setRoom(room);
+}
+
+function applyRemote(room) {
+  if (!duel) return;
+  if (duel.room && room.rev <= duel.room.rev) return;
+  setRoom(room);
+}
+
+function setRoom(room) {
+  const prev = duel.room;
+  duel.room = room;
+  if (room.phase === 'waiting') return;                         // the host is still in the lobby
+  if (view !== 'game') {
+    applyModeUI();
+    setCorners(duel.me === 1);
+    $('roomLabel').textContent = duel.local ? '對手' : '房間';
+    $('roomCode').textContent = duel.local ? 'AI（紅色）' : duel.code;
+    $('meTag').textContent = `${P(duel.me)}（${duel.me === 0 ? '金色' : '紅色'}）`;
+    showView('game');
+    renderDuelInstant(room);
+    return;
+  }
+  const fresh = prev && prev.phase !== 'waiting' && prev.round === room.round;
+  const ev = fresh && room.last.n > prev.last.n ? room.last : null;
+  if (!fresh) { renderDuelInstant(room); return; }
+  // a killed piece jumps back to its start instead of sliding there
+  const victim = ev && ev.killed >= 0 ? pieceOf(ev.killed) : null;
+  if (victim) victim.classList.add('tp');
+  renderDuel(room);
+  void gridEl.offsetWidth;
+  if (victim) { victim.classList.remove('tp'); spawnIn(victim); ghost(prev.st.pos[ev.killed], ev.killed === 0 ? 'player' : 'enemy'); }
+  if (ev) {
+    if (!(ev.type === 'undo' && ev.killed === ev.by)) flashAround(room.st.pos[ev.by].x, room.st.pos[ev.by].y, ev.by === 0 ? 'var(--player)' : 'var(--enemy)');
+    if (ev.by === duel.me && !victim) bounce(pieceOf(ev.by).firstElementChild);
+  }
+}
+
+function renderDuelInstant(room) {
+  const pieces = [playerEl, enemyEls[0]];
+  pieces.forEach(p => p.classList.add('tp'));
+  renderDuel(room);
+  void gridEl.offsetWidth;
+  pieces.forEach(p => p.classList.remove('tp'));
+}
+
+function duelMessage(r) {
+  const me = duel.me, opp = 1 - me;
+  const O = duel.local ? 'AI' : '對手';
+  let main;
+  if (r.phase === 'over') {
+    if (r.reason === 'left') main = '對手離開了房間，你獲勝。';
+    else if (r.st.winner === 2) main = '平手：雙方都無路可走。';
+    else main = r.st.winner === me ? '你贏了！先走到了對角。' : `${O}先走到了對角，你輸了。`;
+    if (r.left[opp] && r.reason !== 'left') main += ' 對手已離開。';
+  } else if (r.st.turn === me) {
+    main = `輪到你（${P(me)}）。`;
+  } else {
+    main = duel.local ? 'AI 思考中…' : `等待對手（${P(opp)}）…`;
+  }
+  const L = r.last;
+  let sub = '';
+  if (L.n > 0) {
+    const who = L.by === me ? '你' : O;
+    const other = L.by === me ? O : '你';
+    if (L.type === 'attack' && L.killed >= 0) sub = `${who}攻擊了${other}，${other}退回起點，起點旁的格子升起。`;
+    else if (L.type === 'undo' && L.killed === L.by) sub = `${who}返回的格子上有人，被擊殺退回起點，起點旁的格子升起。`;
+    else if (L.type === 'undo') sub = `${who}返回上一步。`;
+    if (L.passed >= 0) sub += `${L.passed === me ? '你' : O}無路可走，跳過回合。`;
+  }
+  return sub ? `${main} ${sub}` : main;
+}
+
+function renderDuel(r) {
+  const st = r.st, me = duel.me;
+  const mine = r.phase === 'playing' && st.turn === me;
+  const moves = mine ? duelMoves(st, me) : [];
+  for (let y = 1; y <= N; y++) {
+    for (let x = 1; x <= N; x++) {
+      const c = cells[idx(x, y)];
+      const mv = moves.find(m => m.x === x && m.y === y);
+      c.classList.toggle('down', !st.grid[idx(x, y)]);
+      c.classList.toggle('can', !!mv);
+      c.classList.toggle('atk', !!(mv && mv.attack));
+    }
+  }
+  [[playerEl, st.pos[0]], [enemyEls[0], st.pos[1]]].forEach(([el, p]) => {
+    el.hidden = false;
+    el.style.setProperty('--px', p.x - 1);
+    el.style.setProperty('--py', N - p.y);
+  });
+  enemyEls[1].hidden = true;
+  playerEl.classList.toggle('winner', st.winner === 0);
+  enemyEls[0].classList.toggle('winner', st.winner === 1);
+  const over = r.phase === 'over';
+  $('game').classList.toggle('is-won', over && st.winner === me);
+  $('status').classList.toggle('is-killed', over && st.winner === 1 - me);
+  $('msg').textContent = duelMessage(r);
+  $('dUndo').disabled = !(mine && st.hist[me].length > 0);
+  $('dRematch').hidden = !(over && r.reason !== 'left' && !r.left[1 - me]);
+}
+
+// The room after player `by` played an action (res comes from duelApply).
+const nextRoom = (r, by, res) => ({
+  ...r, st: res.st, rev: r.rev + 1, updatedAt: Date.now(),
+  phase: res.st.winner !== null ? 'over' : 'playing',
+  last: {
+    n: r.last.n + 1, by, type: res.ev.type,
+    killed: res.ev.killed === null ? -1 : res.ev.killed,
+    passed: res.ev.passed === null ? -1 : res.ev.passed,
+  },
+});
+
+// Against the computer: it answers a moment after each of your actions (and opens the game on its own turn).
+function scheduleAi() {
+  const d = duel;
+  if (!d || !d.local) return;
+  clearTimeout(d.aiTimer);
+  d.aiTimer = setTimeout(() => {
+    if (duel !== d) return;
+    const r = d.room;
+    if (r.phase !== 'playing' || r.st.turn !== 1) return;
+    const a = aiPick(r.st, 1, 8, Math.random, d.aiRecent);
+    const res = a && duelApply(r.st, 1, a);
+    if (!res) return;
+    d.aiRecent.push(`${res.st.pos[1].x},${res.st.pos[1].y}`);
+    if (d.aiRecent.length > 8) d.aiRecent.shift();
+    setRoom(nextRoom(r, 1, res));
+    scheduleAi();                                   // you may have to skip, so it can be its turn again
+  }, 700);
+}
+function startAi() {
+  dropRoom();
+  mode = 'ai';
+  duel = { local: true, net: null, code: 'AI', me: 0, room: null, busy: false, aiTimer: null, aiRecent: [] };
+  const room = newRoom('AI', 'you');
+  room.p = ['you', 'ai'];
+  room.phase = 'playing';
+  setRoom(room);
+  scheduleAi();
+}
+
+async function duelAct(a) {
+  const d = duel;
+  const r = d && d.room;
+  if (!r || r.phase !== 'playing' || r.st.turn !== d.me || d.busy) return;
+  const res = duelApply(r.st, d.me, a);
+  if (!res) { shake(pieceOf(d.me).firstElementChild); return; }
+  const next = nextRoom(r, d.me, res);
+  if (d.local) { setRoom(next); scheduleAi(); return; }
+  d.busy = true;
+  setRoom(next);
+  try {
+    await d.net.publish(next);
+  } catch (e) {
+    if (duel === d) {
+      d.room = r;
+      renderDuelInstant(r);
+      $('msg').textContent = '送出失敗，請再試一次。';
+    }
+  } finally {
+    d.busy = false;
+  }
+}
+
+async function rematch() {
+  const d = duel;
+  if (!d || !d.room || d.room.phase !== 'over' || d.room.reason === 'left' || d.room.left[1 - d.me]) return;
+  if (d.local) { d.aiRecent = []; setRoom(newRound(d.room)); scheduleAi(); return; }
+  try {
+    await d.net.rematch();
+  } catch (e) {
+    $('msg').textContent = '無法開始新的一局，請再試一次。';
+  }
+}
+
+// The opponent joined (direct connection): the host's game starts.
+function hostJoined(peerId) {
+  const r = duel.room;
+  if (!r || r.phase !== 'waiting') return;
+  const next = { ...r, p: [r.p[0], peerId], phase: 'playing', rev: r.rev + 1, updatedAt: Date.now() };
+  setRoom(next);
+  duel.net.publish(next);
+}
+// The opponent's connection is gone (direct connection).
+function peerLeft() {
+  const d = duel, r = d.room;
+  if (!r || r.phase === 'waiting') return;
+  const left = r.left.map((v, i) => v || i !== d.me);
+  if (r.phase === 'playing') setRoom({ ...r, phase: 'over', reason: 'left', st: { ...r.st, winner: d.me }, left, rev: r.rev + 1 });
+  else if (!r.left[1 - d.me]) setRoom({ ...r, left, rev: r.rev + 1 });
+}
+
+// Forget the current room or AI match without telling anyone.
+function dropRoom() {
+  const d = duel;
+  duel = null;
+  if (!d) return null;
+  clearTimeout(d.aiTimer);
+  if (d.net) d.net.stop();
+  return d;
+}
+async function leaveRoom() {
+  const d = duel;
+  if (!d) return;
+  duel = null;
+  clearTimeout(d.aiTimer);
+  if (d.net) {
+    try { await d.net.close(d.room, d.me); } catch (e) { /* the room expires by itself */ }
+    d.net.stop();
+  }
+}
+function roomGone() {
+  dropRoom();
+  mode = 'duel';
+  $('lobbyHome').hidden = false;
+  $('lobbyWait').hidden = true;
+  showView('lobby');
+  lobbyEnabled(true);
+  lobbyNote('房間已被關閉。', true);
+}
+async function toMenu() {
+  await leaveRoom();
+  mode = 'menu';
+  showView('menu');
+}
+
+/* ---------- input ---------- */
+gridEl.addEventListener('click', e => {
+  const c = e.target.closest('.cell');
+  if (!c) return;
+  const x = +c.dataset.x, y = +c.dataset.y;
+  if (isDuel()) {
+    const me = duel && duel.room && duel.room.st.pos[duel.me];
+    if (me && Math.abs(x - me.x) + Math.abs(y - me.y) === 1) duelAct({ type: 'move', x, y });
+  } else {
+    tryMove(x, y, 'click');
+  }
+});
+const KEYS = {
+  KeyW: [0, 1], ArrowUp: [0, 1],
+  KeyS: [0, -1], ArrowDown: [0, -1],
+  KeyA: [-1, 0], ArrowLeft: [-1, 0],
+  KeyD: [1, 0], ArrowRight: [1, 0],
+};
+document.addEventListener('keydown', e => {
+  if (view !== 'game' || e.ctrlKey || e.metaKey || e.altKey) return;
+  const d = KEYS[e.code];
+  if (!d) return;
+  e.preventDefault();
+  if (isDuel()) {
+    if (duel && duel.room) {
+      const me = duel.room.st.pos[duel.me];
+      duelAct({ type: 'move', x: me.x + d[0], y: me.y + d[1] });
+    }
+  } else {
+    tryMove(pos.x + d[0], pos.y + d[1], 'key');
+  }
+});
+$('goSolo').addEventListener('click', () => startSolo(false));
+$('goFoes').addEventListener('click', () => startSolo(true));
+$('goAi').addEventListener('click', startAi);
+$('goDuel').addEventListener('click', openLobby);
+$('lobbyBack').addEventListener('click', toMenu);
+$('toMenu').addEventListener('click', toMenu);
+$('createRoom').addEventListener('click', createRoom);
+$('joinForm').addEventListener('submit', e => { e.preventDefault(); joinRoom($('roomInput').value.trim()); });
+$('cancelRoom').addEventListener('click', async () => {
+  await leaveRoom();
+  $('lobbyHome').hidden = false;
+  $('lobbyWait').hidden = true;
+  lobbyEnabled(true);
+  lobbyNote('');
+});
+$('undo').addEventListener('click', undo);
+$('restart').addEventListener('click', restart);
+$('fresh').addEventListener('click', newPuzzle);
+$('dUndo').addEventListener('click', () => duelAct({ type: 'undo' }));
+$('dLeave').addEventListener('click', toMenu);
+$('dRematch').addEventListener('click', rematch);
+</script>
+
+</body>
+</html>
