@@ -285,6 +285,18 @@ kbd {
   <p class="note" id="lobbyNote" role="status"></p>
 </main>
 
+<main class="menu" id="level" hidden>
+  <header class="topbar">
+    <h1>選擇難度</h1>
+    <button class="link" id="levelBack" type="button">← 主選單</button>
+  </header>
+  <div class="menu-list">
+    <button class="menu-btn" data-level="easy" type="button">簡單</button>
+    <button class="menu-btn" data-level="normal" type="button">普通</button>
+    <button class="menu-btn" data-level="hard" type="button">困難</button>
+  </div>
+</main>
+
 <main class="game" id="game" hidden>
   <header class="topbar">
     <h1>Up&amp;Down</h1>
@@ -305,20 +317,22 @@ kbd {
     <div class="axis xaxis" id="xaxis" aria-hidden="true"></div>
   </div>
 
+  <button class="primary" id="dRematch" type="button" hidden>再來一局</button>
   <div class="actions" id="soloActions">
     <button class="primary" id="undo" type="button">↶ 回到上一步</button>
     <button id="restart" type="button">↺ 從頭開始</button>
   </div>
-  <button class="primary" id="dRematch" type="button" hidden>再來一局</button>
   <div class="actions" id="duelActions" hidden>
     <button class="primary" id="dUndo" type="button">↶ 返回上一步</button>
+    <button id="dRestart" type="button" hidden>↺ 從頭開始</button>
     <button id="dLeave" type="button">離開房間</button>
   </div>
+
+  <button id="fresh" type="button">換一個新盤面</button>
 
   <div class="footer">
     <span id="hintSolo">點擊相鄰的升起格，或按 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動</span>
     <span id="hintDuel" hidden>輪到你時，點擊相鄰格或按 <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> 移動；點選相鄰的對手就是攻擊</span>
-    <button class="link" id="fresh" type="button">換一個新盤面</button>
   </div>
 </main>
 
@@ -521,14 +535,26 @@ const BOT_TRIES = [
   { budget: 40000, greedy: .9, maxUndo: 20, restartEvery: 2000 },
 ];
 const levelIsWinnable = (grid, enemies) => BOT_TRIES.some(t => botCanWin(grid, enemies, t));
+// A level is only handed out if it is easy to get through, not just possible: one of a few quick attempts must
+// reach the goal within a couple of thousand turns. Levels that need far more are the ones where almost every
+// way out of the start ends in a dead end, which is no fun even though a way exists.
+const FAIR_TRY = { budget: 2000, greedy: .7, maxUndo: 4, restartEvery: Infinity };
+const levelIsFair = (grid, enemies, attempts = 3) => {
+  for (let i = 0; i < attempts; i++) if (botCanWin(grid, enemies, FAIR_TRY)) return true;
+  return false;
+};
 
 // A random board with enemies, kept only if the bot can get through it. Nothing else is asked of the layout.
 function makeLevel() {
   for (;;) {
     const { grid } = makePuzzle();
     const enemies = placeEnemies(grid);
-    if (levelIsWinnable(grid, enemies)) return { grid, enemies };
+    if (levelIsFair(grid, enemies)) return { grid, enemies };
   }
+}
+// The one-player board without enemies: always solvable, because makePuzzle builds it around a real route.
+function makeSoloLevel() {
+  return { grid: makePuzzle().grid, enemies: [] };
 }
 
 /* ----- two-player duel: 1P starts at (1,1), 2P at (10,10); each wants the opposite corner.
@@ -657,6 +683,12 @@ function pathLen(grid, from, to) {
 // circles (repeat, undo), and then holding the other player back (opp). Distance is the straight-line distance:
 // every step flips the cells next to it, so a path over today's up cells says little about tomorrow's board.
 const AI_W = { man: 1, own: 4, opp: 3, progress: 3, repeat: 4, undo: 8 };
+// Difficulty: how many actions ahead it looks, and how often it plays a careless step instead of its best one. forwardFirst: until nothing leads forward, never a step away from the goal.
+const AI_LEVELS = {
+  easy: { depth: 1, blunder: 0.9, forwardFirst: true, noAttack: true, w: { ...AI_W, progress: 12 } },
+  normal: { depth: 3, blunder: 0.3, forwardFirst: true, noAttack: true, w: { ...AI_W, progress: 12 } },
+  hard: { depth: 8, blunder: 0, w: AI_W },
+};
 // How far ahead `me` is: the other player's distance to his goal, against my own distance weighed more heavily.
 const aiDist = (st, p, w) => (w.man ? dist(st.pos[p], duelGoal(p)) : pathLen(st.grid, st.pos[p], duelGoal(p)));
 const aiEval = (st, me, w = AI_W) => w.opp * aiDist(st, 1 - me, w) - w.own * aiDist(st, me, w);
@@ -682,17 +714,32 @@ function aiSearch(st, me, depth, alpha, beta, w) {
 // The action `me` plays on his turn. `recent` lists the cells ("x,y") he stood on lately; stepping back onto
 // one is discouraged, undoing even more, and every step that shortens his way to the goal is rewarded.
 // A little noise keeps equal choices from always going the same way.
-function aiPick(st, me, depth = 8, rnd = Math.random, recent = [], w = AI_W) {
+function aiPick(st, me, depth = 8, rnd = Math.random, recent = [], w = AI_W, blunder = 0, forwardFirst = false, noAttack = false) {
+  const goal = duelGoal(me);
   const before = aiDist(st, me, w);
+  let options = duelOptions(st, me);
+  if (noAttack) {
+    // never starts a fight: attacking is only an option when nothing but undo is left besides it
+    const foe = st.pos[1 - me];
+    const calm = options.filter(a => !(a.type === 'move' && a.x === foe.x && a.y === foe.y));
+    if (calm.some(a => a.type === 'move')) options = calm;
+  }
+  if (forwardFirst) {
+    // while a step toward the goal exists (onto a cell he has not just stood on), only those are considered
+    const ahead = options.filter(a => a.type === 'move' && dist(a, goal) < dist(st.pos[me], goal) && !recent.includes(`${a.x},${a.y}`));
+    if (ahead.length) options = ahead;
+  }
+  if (blunder && rnd() < blunder) {
+    const loose = options.filter(a => a.type !== 'undo');
+    if (loose.length) return pick(loose, rnd);
+  }
   let best = null, bestV = -Infinity;
-  for (const a of duelOptions(st, me)) {
+  for (const a of options) {
     const res = duelApply(st, me, a);
     let v = aiSearch(res.st, me, depth - 1, -Infinity, Infinity, w) + rnd() * 0.5;
+    v += w.progress * (before - aiDist(res.st, me, w));
     if (a.type === 'undo') v -= w.undo;
-    else {
-      v += w.progress * (before - aiDist(res.st, me, w));
-      if (recent.includes(`${res.st.pos[me].x},${res.st.pos[me].y}`)) v -= w.repeat;
-    }
+    else if (recent.includes(`${res.st.pos[me].x},${res.st.pos[me].y}`)) v -= w.repeat;
     if (v > bestV) { bestV = v; best = a; }
   }
   return best;
@@ -773,11 +820,11 @@ for (let i = 1; i <= N; i++) {
 
 /* ---------- screens ---------- */
 let mode = 'menu';      // 'menu' | 'solo' | 'foes' | 'ai' | 'duel'
-let view = 'menu';      // 'menu' | 'lobby' | 'game'
+let view = 'menu';      // 'menu' | 'level' | 'lobby' | 'game'
 const isDuel = () => mode === 'duel' || mode === 'ai';     // both use the two-player board and rules
 function showView(v) {
   view = v;
-  for (const id of ['menu', 'lobby', 'game']) $(id).hidden = id !== v;
+  for (const id of ['menu', 'level', 'lobby', 'game']) $(id).hidden = id !== v;
   window.scrollTo(0, 0);
 }
 // Mark the viewer's own start (起) and goal (終). In the two-player game 2P sees the corners the other way round,
@@ -791,7 +838,8 @@ function setCorners(flip) {
 // Switch the game screen between the one-player and the two-player furniture.
 function applyModeUI() {
   const duelMode = isDuel();
-  $('dLeave').textContent = mode === 'ai' ? '結束對戰' : '離開房間';
+  $('dLeave').hidden = mode === 'ai';
+  $('dRestart').hidden = mode !== 'ai';
   gridEl.classList.toggle('duel', duelMode);
   setCorners(false);
   document.querySelectorAll('[data-solo]').forEach(e => { e.hidden = duelMode; });
@@ -801,7 +849,7 @@ function applyModeUI() {
   $('dRematch').hidden = true;
   $('hintSolo').hidden = duelMode;
   $('hintDuel').hidden = !duelMode;
-  $('fresh').hidden = duelMode;
+  $('fresh').hidden = mode === 'duel';
   [playerEl, ...enemyEls].forEach(p => p.classList.remove('winner'));
   $('game').classList.remove('is-won');
   $('status').classList.remove('is-killed', 'is-stuck');
@@ -818,7 +866,7 @@ function startSolo(withFoes) {
 }
 function newPuzzle() {
   if (mode === 'foes') ({ grid: initGrid, enemies: initEnemies } = makeLevel());
-  else { initGrid = makePuzzle().grid; initEnemies = []; }
+  else ({ grid: initGrid, enemies: initEnemies } = makeSoloLevel());
   restart();
 }
 function restart() {
@@ -870,6 +918,7 @@ function render() {
   $('steps').textContent = hist.length;
   $('where').textContent = `(${pos.x},${pos.y})`;
   $('undo').disabled = hist.length === 0;
+  $('dRematch').hidden = !won;
 
   const killed = note === 'killed';
   const stuck = !won && !killed && !hasMove();
@@ -1298,7 +1347,7 @@ function setRoom(room) {
     applyModeUI();
     setCorners(duel.me === 1);
     $('roomLabel').textContent = duel.local ? '對手' : '房間';
-    $('roomCode').textContent = duel.local ? 'AI（紅色）' : duel.code;
+    $('roomCode').textContent = duel.local ? `AI・${LEVEL_NAMES[duel.level]}（紅色）` : duel.code;
     $('meTag').textContent = `${P(duel.me)}（${duel.me === 0 ? '金色' : '紅色'}）`;
     showView('game');
     renderDuelInstant(room);
@@ -1403,7 +1452,8 @@ function scheduleAi() {
     if (duel !== d) return;
     const r = d.room;
     if (r.phase !== 'playing' || r.st.turn !== 1) return;
-    const a = aiPick(r.st, 1, 8, Math.random, d.aiRecent);
+    const lv = AI_LEVELS[d.level] || AI_LEVELS.normal;
+    const a = aiPick(r.st, 1, lv.depth, Math.random, d.aiRecent, lv.w, lv.blunder, lv.forwardFirst, lv.noAttack);
     const res = a && duelApply(r.st, 1, a);
     if (!res) return;
     d.aiRecent.push(`${res.st.pos[1].x},${res.st.pos[1].y}`);
@@ -1412,14 +1462,38 @@ function scheduleAi() {
     scheduleAi();                                   // you may have to skip, so it can be its turn again
   }, 700);
 }
-function startAi() {
+const LEVEL_NAMES = { easy: '簡單', normal: '普通', hard: '困難' };
+function startAi(level = 'normal') {
   dropRoom();
   mode = 'ai';
-  duel = { local: true, net: null, code: 'AI', me: 0, room: null, busy: false, aiTimer: null, aiRecent: [] };
+  duel = { local: true, net: null, code: 'AI', me: 0, room: null, busy: false, aiTimer: null, aiRecent: [], level, initSt: null };
   const room = newRoom('AI', 'you');
   room.p = ['you', 'ai'];
   room.phase = 'playing';
+  duel.initSt = room.st;
   setRoom(room);
+  scheduleAi();
+}
+
+// A new board against the computer: same level, fresh board.
+function newAiBoard() {
+  const d = duel;
+  if (!d || !d.local) return;
+  clearTimeout(d.aiTimer);
+  const nr = newRound(d.room);
+  d.initSt = nr.st;
+  d.aiRecent = [];
+  setRoom(nr);
+  scheduleAi();
+}
+
+// Start the same AI match over: same board, everyone back at the start.
+function restartAi() {
+  const d = duel;
+  if (!d || !d.local || !d.initSt) return;
+  clearTimeout(d.aiTimer);
+  d.aiRecent = [];
+  setRoom({ ...d.room, round: d.room.round + 1, phase: 'playing', reason: '', rev: d.room.rev + 1, st: d.initSt, last: noLast(), updatedAt: Date.now() });
   scheduleAi();
 }
 
@@ -1449,7 +1523,7 @@ async function duelAct(a) {
 async function rematch() {
   const d = duel;
   if (!d || !d.room || d.room.phase !== 'over' || d.room.reason === 'left' || d.room.left[1 - d.me]) return;
-  if (d.local) { d.aiRecent = []; setRoom(newRound(d.room)); scheduleAi(); return; }
+  if (d.local) { newAiBoard(); return; }
   try {
     await d.net.rematch();
   } catch (e) {
@@ -1542,7 +1616,9 @@ document.addEventListener('keydown', e => {
 });
 $('goSolo').addEventListener('click', () => startSolo(false));
 $('goFoes').addEventListener('click', () => startSolo(true));
-$('goAi').addEventListener('click', startAi);
+$('goAi').addEventListener('click', () => { mode = 'menu'; showView('level'); });
+document.querySelectorAll('[data-level]').forEach(b => b.addEventListener('click', () => startAi(b.dataset.level)));
+$('levelBack').addEventListener('click', () => showView('menu'));
 $('goDuel').addEventListener('click', openLobby);
 $('lobbyBack').addEventListener('click', toMenu);
 $('toMenu').addEventListener('click', toMenu);
@@ -1557,10 +1633,11 @@ $('cancelRoom').addEventListener('click', async () => {
 });
 $('undo').addEventListener('click', undo);
 $('restart').addEventListener('click', restart);
-$('fresh').addEventListener('click', newPuzzle);
+$('fresh').addEventListener('click', () => (mode === 'ai' ? newAiBoard() : newPuzzle()));
 $('dUndo').addEventListener('click', () => duelAct({ type: 'undo' }));
 $('dLeave').addEventListener('click', toMenu);
-$('dRematch').addEventListener('click', rematch);
+$('dRematch').addEventListener('click', () => (isDuel() ? rematch() : newPuzzle()));
+$('dRestart').addEventListener('click', restartAi);
 </script>
 
 </body>
